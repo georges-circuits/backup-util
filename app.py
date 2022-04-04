@@ -251,6 +251,8 @@ class GUI(tk.Tk):
         if self.backup_process:
             self.backup_process.cancel()
             self.backup_process = None
+            self.schedule_next_backup()
+            
         self.update_buttons()
         self.update_status()
     
