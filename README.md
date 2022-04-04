@@ -25,3 +25,16 @@ once the app starts it will add additional default parameters
 execute `python3 install.py` in the project root directory. This will ask some questions, defaults should be fine, it will then create a systemd service file to autostart the utility after system startup, enable and start the service
 
 
+## Tweaking
+
+### Backup precondition
+
+If you are using this an a laptop, it may be useful to specify some preconditions for the backup process. For this purpose you can add a file called `local.py` to the project root directory, here is a template:
+
+```
+class Checker:
+    def can_backup(self) -> bool:        
+        return True
+```
+When the app starts, it tries to load this file as a module - if it succeeds, it will instantiate the Checker object and poll its `can_backup()` function during runtime
+

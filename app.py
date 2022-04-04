@@ -146,6 +146,7 @@ class GUI(tk.Tk):
 
         logger.debug(f'initializing GUI')
 
+        self.protocol("WM_DELETE_WINDOW", self.close_handler)
         self.wm_iconphoto(True, tk.PhotoImage(file=join(base_path, f'media/icon.png')))
         self.title('backup util')
 
@@ -333,10 +334,13 @@ class GUI(tk.Tk):
         self.status[1].set(text)
 
     def invalid_action(self, message):
-        self.info_box('invalid action', message)
+        tk.messagebox.showerror('invalid action', message)
     
-    def info_box(self, title, message):
-        tk.messagebox.showinfo(title=title, message=message)
+    def close_handler(self):
+        m = 'when you click "Yes" the background service will stop\n'
+        m += 'you can restart it by executing "systemctl start backup-utility.service"'
+        if tk.messagebox.askyesno('confirm close', m):
+            self.destroy()
 
     def hide_user(self):
         self.last_user_action_time = time.time()
