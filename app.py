@@ -1,4 +1,3 @@
-from json.tool import main
 import tkinter as tk
 from tkinter import messagebox
 from configparser import ConfigParser
@@ -148,6 +147,7 @@ class GUI(tk.Tk):
         logger.debug(f'initializing GUI')
 
         self.wm_iconphoto(True, tk.PhotoImage(file=join(base_path, f'media/icon.png')))
+        self.title('backup util')
 
         self.status_frame = tk.Frame(self)
         self.init_status(self.status_frame, 2)
@@ -176,7 +176,7 @@ class GUI(tk.Tk):
         ]
         self.buttons = {}
         for btn in BUTTONS:
-            self.buttons[btn['id']] = tk.Button(master, text=btn['text'], command=btn['command'])
+            self.buttons[btn['id']] = tk.Button(master, text=btn['text'], command=btn['command'], width=10)
             self.buttons[btn['id']].pack(padx=2, pady=2, side=tk.LEFT)
 
     def is_in_countdown(self):
@@ -188,24 +188,22 @@ class GUI(tk.Tk):
         self.update_backup_status()
     
     def controller(self):
-        can_backup, is_in_countdown = self.can_backup(), self.is_in_countdown()
-        
-        if can_backup and not self.backup_process and self.next_backup_time < time.time():
+        if self.next_backup_time < time.time() and not self.backup_process and self.can_backup():
             self.start_backup()
 
         if not self.hidden:
             self.update_status()
 
             ht = time.time() - self.get_hide_period()
-            if self.last_backup_time < ht and self.last_user_action_time < ht and not self.backup_process and not is_in_countdown:
+            if self.last_backup_time < ht and self.last_user_action_time < ht and not self.backup_process and not self.is_in_countdown():
                 logger.debug('hiding because of user inactivity and sufficient time from last backup')
                 self.hide()
         
-        elif is_in_countdown and can_backup:
+        elif self.is_in_countdown() and self.can_backup():
             logger.debug('un-hiding, entering countdown state')
             self.unhide()
         
-        self.after(5000, self.controller)
+        self.after(10000, self.controller)
 
     def start_backup_user(self):
         self.last_user_action_time = time.time()
@@ -229,19 +227,23 @@ class GUI(tk.Tk):
     def monitor_backup(self):
         if self.backup_process:
             if not self.backup_process.is_running():
+                
                 s = self.timedelta2string(datetime.now() - datetime.fromtimestamp(self.last_backup_start))                
                 if self.backup_process.was_successful():
                     logger.info('backup was successful')
                     self.last_backup_status += f'took {s} and transferred {sizeof_fmt(self.backup_process.get_size())}'
+                
                 else:
                     logger.warning('backup failed')
                     self.last_backup_status += 'failed'
+                
                 self.last_backup_time = time.time()
                 self.backup_process = None
                 self.update_buttons()
                 self.schedule_next_backup()
-                self.update_status()
-            self.after(100, self.monitor_backup)
+            
+            self.update_status()
+            self.after(500, self.monitor_backup)
     
     def cancel_backup(self):
         self.last_user_action_time = time.time()
@@ -307,7 +309,7 @@ class GUI(tk.Tk):
         if self.backup_process:
             p = self.backup_process.get_progress() if self.backup_process.is_running() else 0
             s = self.backup_process.get_speed() if self.backup_process.is_running() else 0
-            text += f'backing-up your files at {s}, {int(p * 100)}% done'
+            text += f'backing-up your files {"at " + str(s) + ", " if s else ""}{int(p * 100)}% done'
         
         else:
             before = self.next_backup_time > time.time()
@@ -328,8 +330,6 @@ class GUI(tk.Tk):
             text += f'last backup finished at {self.timestamp2string(self.last_backup_time)}'
             if self.last_backup_status:
                 text += f', {self.last_backup_status}'
-        else:
-            text += 'never backed-up before'
         self.status[1].set(text)
 
     def invalid_action(self, message):

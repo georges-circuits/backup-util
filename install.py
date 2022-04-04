@@ -1,6 +1,7 @@
-from app import app_path
+from app import app_path, default_config_file_path
+from configparser import ConfigParser
 from os import getuid
-from os.path import join, isfile
+from os.path import join, isfile, isdir
 from getpass import getuser
 from subprocess import run
 import sys, time
@@ -11,6 +12,11 @@ if getuid() != 0:
     run(['sudo', 'python3', sys.argv[0], user])
     exit()
 
+c = ConfigParser()
+c.read(default_config_file_path)
+
+backup_source_path = c.get('rsync', 'from', fallback='')
+backup_destination_path = c.get('rsync', 'to', fallback='')
 service_file_name = 'backup-utility.service'
 default_service_dir_path = '/etc/systemd/system/'
 default_user = sys.argv[1] if len(sys.argv) >= 2 else getuser()
@@ -22,6 +28,17 @@ def prompt(message, default = ''):
     if not ret:
         ret = default
     return ret
+
+backup_source_path = prompt('backup source path', backup_source_path)
+backup_destination_path = prompt('backup destination path', backup_destination_path)
+
+if isdir(backup_destination_path) and isdir(backup_source_path):
+    print(f'saving config at {default_config_file_path}')
+    with open(default_config_file_path, 'w') as configfile:
+        c.write(configfile)
+else:
+    print('path(s) not valid')
+    exit()
 
 user = prompt('user under which the service should run', default_user)
 service_file_path = join(prompt('service directory', default_service_dir_path), service_file_name)
@@ -63,8 +80,9 @@ run(['systemctl', 'daemon-reload'])
 run(['systemctl', 'enable', service_file_name])
 run(['systemctl', 'start', service_file_name])
 
-time.sleep(1)
+print('\nthe window should appear now, print service status in 3 seconds:')
+
+time.sleep(3)
 run(['systemctl', 'status', service_file_name])
 
-print('\nthe window should appear now')
 
