@@ -131,7 +131,7 @@ class GUI(tk.Tk):
 
         next_at = int(self.config.get('backups', 'next_at', fallback='0'))
         if next_at < time.time() or next_at > time.time() + self.get_backup_period():
-            self.schedule_next_backup(60)
+            self.schedule_next_backup(60 * 10)
         else:
             logger.info(f'found valid "next_at = {next_at}" in the config')
             self.schedule_next_backup(next_at - time.time() + 1)
@@ -218,7 +218,6 @@ class GUI(tk.Tk):
             self.invalid_action('backup is already in progress')
         else:
             logger.info(f'starting a backup')
-            self.last_backup_status = ''
             self.last_backup_start = time.time()
             self.backup_process = self.backup_process_class(self.config)
             self.update_buttons()
@@ -228,6 +227,7 @@ class GUI(tk.Tk):
         if self.backup_process:
             if not self.backup_process.is_running():
                 
+                self.last_backup_status = ''
                 s = self.timedelta2string(datetime.now() - datetime.fromtimestamp(self.last_backup_start))                
                 if self.backup_process.was_successful():
                     logger.info('backup was successful')
