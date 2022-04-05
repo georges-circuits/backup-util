@@ -125,6 +125,7 @@ class GUI(tk.Tk):
         self.backup_process = None
         self.last_backup_time = 0 #TODO the thing could have a log, which it would query 
         self.last_user_action_time = time.time()
+        self.last_unhide_time = time.time()
         self.hidden = False
         self.last_backup_status = ''
         self.last_backup_start = 0
@@ -148,7 +149,7 @@ class GUI(tk.Tk):
 
         self.protocol("WM_DELETE_WINDOW", self.close_handler)
         self.wm_iconphoto(True, tk.PhotoImage(file=join(base_path, f'media/icon.png')))
-        self.title('backup util')
+        self.set_title()
 
         self.status_frame = tk.Frame(self)
         self.init_status(self.status_frame, 2)
@@ -180,8 +181,19 @@ class GUI(tk.Tk):
             self.buttons[btn['id']] = tk.Button(master, text=btn['text'], command=btn['command'], width=10)
             self.buttons[btn['id']].pack(padx=2, pady=2, side=tk.LEFT)
 
+    def set_title(self, message=''):
+        if message:
+            message = f'- {message}'
+        self.title(f'backup util {message}')
+
     def is_in_countdown(self):
         return self.next_backup_time - self.get_countdown_period() < time.time()
+
+    def visible_long_enough(self):
+        return self.last_unhide_time + self.get_countdown_period() < time.time()
+
+    def backup_is_running(self):
+        return self.backup_process != None
 
     def postpone_backup_user(self, hours):
         self.last_user_action_time = time.time()
@@ -189,20 +201,20 @@ class GUI(tk.Tk):
         self.update_backup_status()
     
     def controller(self):
-        if self.next_backup_time < time.time() and not self.backup_process and self.can_backup():
-            self.start_backup()
-
         if not self.hidden:
             self.update_status()
 
             ht = time.time() - self.get_hide_period()
-            if self.last_backup_time < ht and self.last_user_action_time < ht and not self.backup_process and not self.is_in_countdown():
+            if self.last_backup_time < ht and self.last_user_action_time < ht and not self.backup_is_running() and not self.is_in_countdown():
                 logger.debug('hiding because of user inactivity and sufficient time from last backup')
                 self.hide()
         
         elif self.is_in_countdown() and self.can_backup():
             logger.debug('un-hiding, entering countdown state')
             self.unhide()
+
+        if self.next_backup_time < time.time() and self.visible_long_enough() and not self.backup_is_running() and self.can_backup():
+            self.start_backup()
         
         self.after(10000, self.controller)
 
@@ -215,7 +227,7 @@ class GUI(tk.Tk):
             self.invalid_action('cannot backup at this time')
 
     def start_backup(self):
-        if self.backup_process:
+        if self.backup_is_running():
             self.invalid_action('backup is already in progress')
         else:
             logger.info(f'starting a backup')
@@ -225,7 +237,7 @@ class GUI(tk.Tk):
             self.monitor_backup()
 
     def monitor_backup(self):
-        if self.backup_process:
+        if self.backup_is_running():
             if not self.backup_process.is_running():
                 
                 self.last_backup_status = ''
@@ -238,6 +250,7 @@ class GUI(tk.Tk):
                     logger.warning('backup failed')
                     self.last_backup_status += 'failed'
                 
+                logger.debug(f'backup_status: {self.last_backup_status}')
                 self.last_backup_time = time.time()
                 self.backup_process = None
                 self.update_buttons()
@@ -248,7 +261,7 @@ class GUI(tk.Tk):
     
     def cancel_backup(self):
         self.last_user_action_time = time.time()
-        if self.backup_process:
+        if self.backup_is_running():
             self.backup_process.cancel()
             self.backup_process = None
             self.schedule_next_backup()
@@ -307,12 +320,21 @@ class GUI(tk.Tk):
         self.update_backup_status()
         self.update_log_status()
 
+        if self.backup_is_running():
+            self.set_title()
+        elif not self.can_backup():
+            self.set_title('preconditions not met')
+        elif self.is_in_countdown():
+            self.set_title('in countdown')
+        else:
+            self.set_title()
+
     def update_backup_status(self):
         text = ''
-        if self.backup_process:
+        if self.backup_is_running():
             p = self.backup_process.get_progress() if self.backup_process.is_running() else 0
-            s = self.backup_process.get_speed() if self.backup_process.is_running() else 0
-            text += f'backing-up your files {"at " + str(s) + ", " if s else ""}{int(p * 100)}% done'
+            s = f'at {self.backup_process.get_speed()}, ' if self.backup_process.is_running() else ''
+            text += f'backing-up your files {s}{int(p * 100)}% done'
         
         else:
             before = self.next_backup_time > time.time()
@@ -359,6 +381,7 @@ class GUI(tk.Tk):
         if self.hidden:
             self.hidden = False
             self.iconify()
+            self.last_unhide_time = time.time()
 
 
 if __name__ == '__main__':
