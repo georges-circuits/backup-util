@@ -8,7 +8,7 @@ from importlib.machinery import SourceFileLoader
 import subprocess, time, logging
 
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app_path = realpath(__file__)
@@ -72,13 +72,19 @@ class rsyncProcess:
                         raise
                     items = line.strip().split(' ')
                     info = tuple(filter(None, items))
-                    if info:
+                    try:
                         self.size = int(info[0].replace(',', ''))
                         self.progress = int(info[1].removesuffix('%')) / 100
                         self.speed = info[2]
+                    except:
+                        line = line.strip()
+                        if line:
+                            logger.warning(f'unexpected line from rsync: {line}')
         
         except Exception as e:
-            self.exception = e
+            if self.running:
+                logger.error(f'rsync process exception: {e}')
+                self.exception = e
 
         self.running = False
 
@@ -129,10 +135,12 @@ class GUI(tk.Tk):
         self.hidden = False
         self.last_backup_status = ''
         self.last_backup_start = 0
+        self.can_backup_last_poll = 0
+        self.can_backup_last = False
 
         next_at = int(self.config.get('backups', 'next_at', fallback='0'))
         if next_at < time.time() or next_at > time.time() + self.get_backup_period():
-            self.schedule_next_backup(60 * 10)
+            self.schedule_next_backup(self.get_countdown_period())
         else:
             logger.info(f'found valid "next_at = {next_at}" in the config')
             self.schedule_next_backup(next_at - time.time() + 1)
@@ -270,7 +278,10 @@ class GUI(tk.Tk):
         self.update_status()
     
     def can_backup(self):
-        return self.checker.can_backup()
+        if time.time() - self.can_backup_last_poll > 1:
+            self.can_backup_last = self.checker.can_backup()
+            self.can_backup_last_poll = time.time()
+        return self.can_backup_last
         
     def schedule_next_backup(self, seconds = 0):
         if not seconds:
@@ -358,13 +369,37 @@ class GUI(tk.Tk):
         self.status[1].set(text)
 
     def invalid_action(self, message):
-        tk.messagebox.showerror('invalid action', message)
+        t = tk.Toplevel(self)
+        t.wm_title('invalid action')
+        
+        f = tk.Frame(t)
+        tk.Label(f, text=message).pack()
+        f.pack(side="top", fill="both", expand=True, padx=100, pady=10)
+
+        f = tk.Frame(t)
+        tk.Button(f, text="Ok", width=10, command=t.destroy).pack(padx=2, pady=2, side=tk.LEFT)
+        f.pack()
     
     def close_handler(self):
+        t = tk.Toplevel(self)
+        t.wm_title('confirm close')
+        
+        f = tk.Frame(t)
         m = 'when you click "Yes" the background service will stop\n'
-        m += 'you can restart it by executing "systemctl start backup-utility.service"'
-        if tk.messagebox.askyesno('confirm close', m):
-            self.destroy()
+        m += 'you can restart it by executing "systemctl start backup-utility.service" as root'
+        tk.Label(f, text=m).pack()
+        f.pack(side="top", fill="both", expand=True, padx=10, pady=10)
+
+        f = tk.Frame(t)
+        tk.Button(f, text="Yes", width=10, command=self.terminate).pack(padx=2, pady=2, side=tk.LEFT)
+        tk.Button(f, text="No", width=10, command=t.destroy).pack(padx=2, pady=2, side=tk.LEFT)
+        f.pack()
+
+    
+    def terminate(self):
+        if self.backup_is_running():
+            self.cancel_backup()
+        self.destroy()
 
     def hide_user(self):
         self.last_user_action_time = time.time()
