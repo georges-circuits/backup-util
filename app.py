@@ -62,10 +62,9 @@ class rsyncProcess:
 
     def _run(self):
         try:
-            self.progress = 0
-            with subprocess.Popen(
-                self._get_cmd('--info=progress2'), stdout=subprocess.PIPE, bufsize=1, text=True
-            ) as process:
+            cmd = self._get_cmd('--info=progress2')
+            logger.debug(f'starting command "{cmd}" as subprocess')
+            with subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=1, text=True) as process:
                 for line in process.stdout:
                     if not self.running:
                         process.terminate()
@@ -103,9 +102,13 @@ class rsyncProcess:
     def was_successful(self) -> bool:
         return not self.exception
 
-    def cancel(self):
+    def finish(self):
         self.running = False
         self.thread.join()
+    
+    def cancel(self):
+        self.finish()
+        
 
 
 
@@ -260,6 +263,7 @@ class GUI(tk.Tk):
                 
                 logger.debug(f'backup_status: {self.last_backup_status}')
                 self.last_backup_time = time.time()
+                self.backup_process.finish()
                 self.backup_process = None
                 self.update_buttons()
                 self.schedule_next_backup()
